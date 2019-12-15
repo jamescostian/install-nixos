@@ -224,14 +224,12 @@ read -p "When you are ready, press ENTER to install from the configuration "
 
 if nixos-install; then
 	if [[ -f /mnt/etc/nixos/setup.sh ]] || [[ -f /mnt/etc/nixos/setup ]]; then
-		read -p "Would you like to run the setup script? (y/n) " -n 1 RUN_SETUP
-		if [[ "$RUN_SETUP" == "y" ]]; then
-			export RUNNING_FROM_NIXOS_INSTALLER
-			if [[ -f /mnt/etc/nixos/setup.sh ]]; then
-				/mnt/etc/nixos/setup.sh
-			else
-				/mnt/etc/nixos/setup
-			fi
+		echo "Running your setup script..."
+		export RUNNING_FROM_NIXOS_INSTALLER=true
+		if [[ -f /mnt/etc/nixos/setup.sh ]]; then
+			/mnt/etc/nixos/setup.sh
+		else
+			/mnt/etc/nixos/setup
 		fi
 	fi
 	reboot
