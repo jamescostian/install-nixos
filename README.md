@@ -28,7 +28,7 @@ The following are **NOT SUPPORTED** - you can send me a pull request if you'd li
 3. Boot from that USB and wait for it to show you the GUI
 4. Connect to the internet
 5. Open Konsole (the program)
-6. Type `sudo sh -c <(curl -sSLf https://jami.am/nix)`
+6. Type `sudo bash -c "$(curl -sSLf https://jami.am/nix)"`
 7. Press the ENTER key and follow the instructions!
 
 The URL will redirect to [the installer script](install-nixos.sh) - you can type in the full URL if you don't trust me, or break it into a few more steps - `curl`, then `cat -e` to inspect the script, and finally execute it if you deem it safe.
