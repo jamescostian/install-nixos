@@ -10,7 +10,7 @@ The goal of this script is to make installing NixOS easier, quicker, and less er
 - Runs all the steps the NixOS manual asks you to run to install NixOS
 - Allows you to choose how much [swap space](https://web.mit.edu/rhel-doc/5/RHEL-5-manual/Deployment_Guide-en-US/ch-swapspace.html) you want
 - Type a git URL and clone it to `/etc/nixos` - this is useful if you already have a NixOS configuration, like [mine](https://github.com/jamescostian/.config)
-  - If the repo contains a `setup.sh` or `setup` file, you can optionally run it just before rebooting. An environment variable (`RUNNING_FROM_NIXOS_INSTALLER`) will be set while your setup script is run, and at the time it's run, it will be in `/mnt/etc/nixos` - any path you'd normally use will be prepended by `/mnt`, e.g. `/home/james` will be `/mnt/home/james` when this script gets run
+  - If the repo contains a `setup.sh` or `setup` file, you can optionally run it just before rebooting. An environment variable (`RUNNING_FROM_NIXOS_INSTALLER`) will be set while your setup script is run, and at the time it's run, it will be in `/mnt/etc/nixos` - any path you'd normally use will be prepended by `/mnt`, e.g. instead of using `/home/james` you should use `/mnt/home/james` when this script gets run.
 - Small, per-machine niceties:
   - Moves `useDHCP` stuff from the generated `configuration.nix` to `hardware-configuration.nix` so `configuration.nix` can be checked into version control more easily; solves [this issue](https://github.com/NixOS/nixpkgs/issues/73595)
   - Pick a hostname that gets added to `hardware-configuration.nix` - this feature is optional.
