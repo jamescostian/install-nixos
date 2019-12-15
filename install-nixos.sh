@@ -232,6 +232,9 @@ if nixos-install; then
 			/mnt/etc/nixos/setup
 		fi
 	fi
+	echo
+	echo
+	read -p "Remove the installation media (USB, CD, etc) and then hit ENTER to reboot"
 	reboot
 else
 	echo
