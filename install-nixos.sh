@@ -62,8 +62,7 @@ done
 DEVICE="/dev/$DEVICE"
 
 while true; do
-	echo
-	echo "When Linux runs out of RAM, everything goes to shit."
+	echo -e "\nWhen Linux runs out of RAM, everything goes to shit."
 	echo "Swap (using another device as extra ram) helps avoid that catastrophe."
 	# TODO: Should I tell them the truth? Do people even know what a gibibyte is?
 	read -p "How many gigabytes of swap do you want? (e.g. 1) " SWAP_SIZE
@@ -76,9 +75,29 @@ while true; do
 done
 if [[ "$SWAP_SIZE" == "0" ]]; then
 	echo "Invalid - I'll give you 1GiB of swap"
-	SWAP_SIZE="1GiB"
+	SWAP_SIZE="1G"
 else
-	SWAP_SIZE="$SWAP_SIZE"'GiB'
+	SWAP_SIZE="$SWAP_SIZE"'G'
+fi
+
+echo -e "\nDo you want full-disk encryption? On the downside, it requires you to type a"
+echo "separate password every time you turn on your computer in order to decrypt it,"
+echo "but in exchange for the hassle it can keep you safe from attackers."
+read -p "Would you like full-disk encryption? (y/n) " -n 1 ENABLE_ENCRYPTION
+if [[ "$ENABLE_ENCRYPTION" == "y" || "$ENABLE_ENCRYPTION" == "Y" || "$ENABLE_ENCRYPTION" == "yes" ]]; then
+	export ENABLE_ENCRYPTION="y" # Custom scripts can just read this and check if it's set to "y"
+	export ENCRYPTED_PARTITION="$PARTITION"1 # Custom scripts can also just read this
+	echo "Great! I'll let you type in a password - it won't show up on the screen."
+	echo "If you decide you don't want full-disk encryption"
+	while true; do
+		read -sp "Enter the password you want to type when turning on your machine:" ENCRYPTION_PASSWORD
+		read -sp "Now enter it one more time, just in case you made a typo: " ENCRYPTION_PASSWORD_CONFIRMATION
+		if [[ "$ENCRYPTION_PASSWORD_CONFIRMATION" == "$ENCRYPTION_PASSWORD" ]]; then
+			break;
+		else
+			echo -e "INCORRECT! You typed in 2 different passwords! Make up your mind!\n"
+		fi
+	done
 fi
 
 if [[ "$DEVICE" == "/dev/nvme"* ]]; then
@@ -87,8 +106,7 @@ else
 	PARTITION="$DEVICE"
 fi
 
-echo
-echo "Ok, I will install to $DEVICE with a swap size of $SWAP_SIZE"
+echo -e "\nOk, I will install to $DEVICE with a swap size of $SWAP_SIZE"iB
 echo "WARNING: THIS WILL WIPE EVERYTHING ON $DEVICE"
 read -p "Are you sure about this? Press Ctrl+C to cancel or ENTER to continue "
 
@@ -106,11 +124,22 @@ umount -q /mnt 2> /dev/null
 for part in $(parted $DEVICE -- print | awk '/^ / {print $1}'); do
 	parted $DEVICE -- rm $part
 done
+# Use GPT
 yes | parted $DEVICE -- mklabel gpt > /dev/null
-parted $DEVICE -- mkpart primary 512MiB -"$SWAP_SIZE" > /dev/null
-yes ignore | parted $DEVICE -- mkpart primary linux-swap -"$SWAP_SIZE" 100% > /dev/null
+# Actually create the partitions
+if [[ -z "$ENCRYPTION_PASSWORD" ]]; then
+	# No encryption password - make a plain data partition and a swap partition
+	parted $DEVICE -- mkpart primary 512MiB -"$SWAP_SIZE"iB > /dev/null
+	yes ignore | parted $DEVICE -- mkpart primary linux-swap -"$SWAP_SIZE"iB 100% > /dev/null
+	BOOT_PARTITION_NUM=3
+else
+	# Encryption was requested - don't make a normal swap partition, make it inside of LUKS
+	parted $DEVICE -- mkpart primary 512MiB > /dev/null
+	parted $DEVICE -- set 1 lvm on
+	BOOT_PARTITION_NUM=2
+fi
 parted $DEVICE -- mkpart ESP fat32 1MiB 512MiB > /dev/null
-parted $DEVICE -- set 3 boot on > /dev/null
+parted $DEVICE -- set $BOOT_PARTITION_NUM boot on > /dev/null
 
 #  _____                _        ______ _ _                     _                     
 # /  __ \              | |       |  ___(_) |                   | |                    
@@ -120,9 +149,22 @@ parted $DEVICE -- set 3 boot on > /dev/null
 #  \____/_|  \___|\__,_|\__\___| \_|   |_|_|\___||___/\__, |___/\__\___|_| |_| |_|___/
 #                                                      __/ |                          
 #                                                     |___/                           
-mkfs.ext4 -L nixos "$PARTITION"1 > /dev/null
-mkswap -L swap "$PARTITION"2 > /dev/null
-mkfs.fat -F 32 -n boot "$PARTITION"3 > /dev/null
+if [[ ! -z "$ENCRYPTION_PASSWORD" ]];
+	# First, make the luks container
+	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksFormat $ENCRYPTED_PARTITION -
+	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksOpen $ENCRYPTED_PARTITION nixos-luks -
+	# Next, setup LVM within it
+	pvcreate /dev/mapper/nixos-luks 2> /dev/null
+	vgcreate nixos-lvm /dev/mapper/nixos-luks 2> /dev/null
+	lvcreate -L "$SWAP_SIZE" -n swap nixos-lvm 2> /dev/null
+	lvcreate -l 100%FREE -n nixos nixos-lvm 2> /dev/null
+	mkfs.ext4 -L nixos /dev/nixos-lvm/nixos
+	mkswap -L swap /dev/nixos-lvm/swap
+else
+	mkfs.ext4 -L nixos "$PARTITION"1 > /dev/null
+	mkswap -L swap "$PARTITION"2 > /dev/null
+fi
+mkfs.fat -F 32 -n boot "$PARTITION$BOOT_PARTITION_NUM" > /dev/null
 
 # ___  ___                  _   
 # |  \/  |                 | |  
@@ -148,15 +190,12 @@ swapon /dev/disk/by-label/swap
 nixos-generate-config --root /mnt
 set +e
 
-echo
-echo
-echo
-echo "The informational and warning messages above can be ignored safely."
+echo -e "\n\n\nThe informational and warning messages above can be ignored safely."
 CLONED_FROM_DOTFILES=false
 while true; do
 	read -p "Would you like to clone a NixOS configuration from git? (y/n) " -n 1 EXISTING
 	echo
-	if [[ "$EXISTING" == "y" ]]; then
+	if [[ "$EXISTING" == "y" || "$EXISTING" == "Y" || "$EXISTING" == "yes" ]]; then
 		echo "I need a URL to clone - everything in it will be moved to /mnt/etc/nixos"
 		echo "and /mnt/etc/nixos will become /etc/nixos after this installation is done."
 		echo "Please provide a URL for git-clone. There are shorthands for popular hosts:"
@@ -193,9 +232,7 @@ while true; do
 		find . -type f -exec cp -i {} /mnt/etc/nixos/{} \; # Copy files from this directory to /mnt/etc/nixos
 		rm -Rf /mnt/etc/nixos/cloned_dotfiles # Delete the originally cloned stuff; you can clone it again later on if you want
 		CLONED_FROM_DOTFILES=true
-		echo
-		echo
-		echo "Done cloning"
+		echo -e "\n\nDone cloning"
 		cd /mnt/etc/nixos
 		break
 	else
@@ -203,24 +240,8 @@ while true; do
 	fi
 done
 
-echo
-echo
-echo
-echo "You may want to adjust the configuration in /mnt/etc/nixos"
-echo
-if [[ "$CLONED_FROM_DOTFILES" == "true" ]]; then
-	# Move the useDHCP lines from configuration.nix to hardware-configuration.nix, as they are machine-dependent
-	sed -i 's~\}\s*$~g~' /mnt/etc/nixos/hardware-configuration.nix
-	cat /mnt/etc/nixos/default-configuration.nix | grep networking | grep useDHCP >> /mnt/etc/nixos/hardware-configuration.nix
-	if ! grep hostName /mnt/etc/nixos/configuration.nix | grep -v '^\s*#';
-		read -p "What would you like your hostname to be? " NIXOS_HOSTNAME
-		if [[ "$NIXOS_HOSTNAME" != "" ]]; then
-			echo "  networking.hostName = \"$NIXOS_HOSTNAME\";" >> /mnt/etc/nixos/hardware-configuration.nix
-		fi
-	fi
-	echo "}" >> /mnt/etc/nixos/hardware-configuration.nix
-fi
-read -p "When you are ready, press ENTER to install from the configuration "
+echo -e "\n\n\nYou may want to adjust the configuration in /mnt/etc/nixos - if you know what\n"
+read -p "you're doing. When you are ready, press ENTER to install from the configuration"
 
 if nixos-install; then
 	if [[ -f /mnt/etc/nixos/setup.sh ]] || [[ -f /mnt/etc/nixos/setup ]]; then
@@ -237,8 +258,6 @@ if nixos-install; then
 	read -p "Remove the installation media (USB, CD, etc) and then hit ENTER to reboot"
 	reboot
 else
-	echo
-	echo
-	echo "nixos-install exited with an error code. Check its output above!"
+	echo -e "\nnixos-install exited with an error code. Check its output above!"
 	echo "If you think it's safe, reboot. If not, figure it out!"
 fi
