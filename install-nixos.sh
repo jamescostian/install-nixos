@@ -80,30 +80,31 @@ else
 	SWAP_SIZE="$SWAP_SIZE"'G'
 fi
 
+if [[ "$DEVICE" == "/dev/nvme"* ]]; then
+	PARTITION="$DEVICE"p
+else
+	PARTITION="$DEVICE"
+fi
+
 echo -e "\nDo you want full-disk encryption? On the downside, it requires you to type a"
-echo "separate password every time you turn on your computer in order to decrypt it,"
+echo "separate password every time you turn on your computer in order to decrypt it"
 echo "but in exchange for the hassle it can keep you safe from attackers."
 read -p "Would you like full-disk encryption? (y/n) " -n 1 ENABLE_ENCRYPTION
 if [[ "$ENABLE_ENCRYPTION" == "y" || "$ENABLE_ENCRYPTION" == "Y" || "$ENABLE_ENCRYPTION" == "yes" ]]; then
 	export ENABLE_ENCRYPTION="y" # Custom scripts can just read this and check if it's set to "y"
 	export ENCRYPTED_PARTITION="$PARTITION"1 # Custom scripts can also just read this
-	echo "Great! I'll let you type in a password - it won't show up on the screen."
-	echo "If you decide you don't want full-disk encryption"
+	echo -e "\nGreat! I'll let you type in a password - it won't show up on the screen."
 	while true; do
-		read -sp "Enter the password you want to type when turning on your machine:" ENCRYPTION_PASSWORD
+		read -sp "Enter the password you want to type when turning on your machine: " ENCRYPTION_PASSWORD
+		echo
 		read -sp "Now enter it one more time, just in case you made a typo: " ENCRYPTION_PASSWORD_CONFIRMATION
+		echo
 		if [[ "$ENCRYPTION_PASSWORD_CONFIRMATION" == "$ENCRYPTION_PASSWORD" ]]; then
 			break;
 		else
 			echo -e "INCORRECT! You typed in 2 different passwords! Make up your mind!\n"
 		fi
 	done
-fi
-
-if [[ "$DEVICE" == "/dev/nvme"* ]]; then
-	PARTITION="$DEVICE"p
-else
-	PARTITION="$DEVICE"
 fi
 
 echo -e "\nOk, I will install to $DEVICE with a swap size of $SWAP_SIZE"iB
@@ -121,25 +122,27 @@ read -p "Are you sure about this? Press Ctrl+C to cancel or ENTER to continue "
 umount -q /mnt/boot 2> /dev/null
 umount -q /mnt 2> /dev/null
 # Delete any previous partitions
-for part in $(parted $DEVICE -- print | awk '/^ / {print $1}'); do
-	parted $DEVICE -- rm $part
-done
+if [[ ! -z "$(parted $DEVICE -- print | awk '/^ / {print $1}')" ]]; then
+	for part in $(parted $DEVICE -- print | awk '/^ / {print $1}'); do
+		parted $DEVICE -- rm $part 2> /dev/null
+	done
+fi
 # Use GPT
-yes | parted $DEVICE -- mklabel gpt > /dev/null
+yes | parted $DEVICE -- mklabel gpt > /dev/null  2> /dev/null
 # Actually create the partitions
 if [[ -z "$ENCRYPTION_PASSWORD" ]]; then
 	# No encryption password - make a plain data partition and a swap partition
-	parted $DEVICE -- mkpart primary 512MiB -"$SWAP_SIZE"iB > /dev/null
-	yes ignore | parted $DEVICE -- mkpart primary linux-swap -"$SWAP_SIZE"iB 100% > /dev/null
+	parted $DEVICE -- mkpart primary 512MiB -"$SWAP_SIZE"iB > /dev/null 2> /dev/null
+	yes ignore | parted $DEVICE -- mkpart primary linux-swap -"$SWAP_SIZE"iB 100% > /dev/null 2> /dev/null
 	BOOT_PARTITION_NUM=3
 else
 	# Encryption was requested - don't make a normal swap partition, make it inside of LUKS
-	parted $DEVICE -- mkpart primary 512MiB > /dev/null
-	parted $DEVICE -- set 1 lvm on
+	parted $DEVICE -- mkpart primary 512MiB 100% > /dev/null 2> /dev/null
+	parted $DEVICE -- set 1 lvm on 2> /dev/null
 	BOOT_PARTITION_NUM=2
 fi
-parted $DEVICE -- mkpart ESP fat32 1MiB 512MiB > /dev/null
-parted $DEVICE -- set $BOOT_PARTITION_NUM boot on > /dev/null
+parted $DEVICE -- mkpart ESP fat32 1MiB 512MiB > /dev/null 2> /dev/null
+parted $DEVICE -- set $BOOT_PARTITION_NUM boot on > /dev/null 2> /dev/null
 
 #  _____                _        ______ _ _                     _                     
 # /  __ \              | |       |  ___(_) |                   | |                    
@@ -149,17 +152,17 @@ parted $DEVICE -- set $BOOT_PARTITION_NUM boot on > /dev/null
 #  \____/_|  \___|\__,_|\__\___| \_|   |_|_|\___||___/\__, |___/\__\___|_| |_| |_|___/
 #                                                      __/ |                          
 #                                                     |___/                           
-if [[ ! -z "$ENCRYPTION_PASSWORD" ]];
+if [[ ! -z "$ENCRYPTION_PASSWORD" ]]; then
 	# First, make the luks container
-	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksFormat $ENCRYPTED_PARTITION -
-	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksOpen $ENCRYPTED_PARTITION nixos-luks -
+	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksFormat $ENCRYPTED_PARTITION - 2> /dev/null
+	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksOpen $ENCRYPTED_PARTITION nixos-luks - 2> /dev/null
 	# Next, setup LVM within it
 	pvcreate /dev/mapper/nixos-luks 2> /dev/null
 	vgcreate nixos-lvm /dev/mapper/nixos-luks 2> /dev/null
 	lvcreate -L "$SWAP_SIZE" -n swap nixos-lvm 2> /dev/null
 	lvcreate -l 100%FREE -n nixos nixos-lvm 2> /dev/null
-	mkfs.ext4 -L nixos /dev/nixos-lvm/nixos
-	mkswap -L swap /dev/nixos-lvm/swap
+	mkfs.ext4 -L nixos /dev/nixos-lvm/nixos > /dev/null
+	mkswap -L swap /dev/nixos-lvm/swap > /dev/null
 else
 	mkfs.ext4 -L nixos "$PARTITION"1 > /dev/null
 	mkswap -L swap "$PARTITION"2 > /dev/null
@@ -240,7 +243,7 @@ while true; do
 	fi
 done
 
-echo -e "\n\n\nYou may want to adjust the configuration in /mnt/etc/nixos - if you know what\n"
+echo -e "\n\n\nYou may want to adjust the configuration in /mnt/etc/nixos - if you know what"
 read -p "you're doing. When you are ready, press ENTER to install from the configuration"
 
 if nixos-install; then
