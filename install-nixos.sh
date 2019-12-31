@@ -92,7 +92,6 @@ echo "but in exchange for the hassle it can keep you safe from attackers."
 read -p "Would you like full-disk encryption? (y/n) " -n 1 ENABLE_ENCRYPTION
 if [[ "$ENABLE_ENCRYPTION" == "y" || "$ENABLE_ENCRYPTION" == "Y" || "$ENABLE_ENCRYPTION" == "yes" ]]; then
 	export ENABLE_ENCRYPTION="y" # Custom scripts can just read this and check if it's set to "y"
-	export ENCRYPTED_PARTITION="$PARTITION"1 # Custom scripts can also just read this
 	echo -e "\nGreat! I'll let you type in a password - it won't show up on the screen."
 	while true; do
 		read -sp "Enter the password you want to type when turning on your machine: " ENCRYPTION_PASSWORD
@@ -154,8 +153,8 @@ parted $DEVICE -- set $BOOT_PARTITION_NUM boot on > /dev/null 2> /dev/null
 #                                                     |___/                           
 if [[ ! -z "$ENCRYPTION_PASSWORD" ]]; then
 	# First, make the luks container
-	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksFormat $ENCRYPTED_PARTITION - 2> /dev/null
-	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksOpen $ENCRYPTED_PARTITION nixos-luks - 2> /dev/null
+	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksFormat "$PARTITION"1 - 2> /dev/null
+	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksOpen "$PARTITION"1 nixos-luks - 2> /dev/null
 	# Next, setup LVM within it
 	pvcreate /dev/mapper/nixos-luks 2> /dev/null
 	vgcreate nixos-lvm /dev/mapper/nixos-luks 2> /dev/null
@@ -242,6 +241,18 @@ while true; do
 		break
 	fi
 done
+
+if [[ "$ENABLE_ENCRYPTION" == "y" ]]; then
+	sed -i 's~\}\s*$~g~' /mnt/etc/nixos/hardware-configuration.nix
+	ENCRYPTED_UUID=$(lsblk --output=UUID --noheadings /dev/disk/by-label/nixos)
+	echo "  boot.initrd.luks.devices = [{" >> /mnt/etc/nixos/hardware-configuration.nix
+	echo "    name = \"nixos\";" >> /mnt/etc/nixos/hardware-configuration.nix
+	echo "    device = \"/dev/disk/by-uuid/$ENCRYPTED_UUID\";" >> /mnt/etc/nixos/hardware-configuration.nix
+	echo "    preLVM = true;" >> /mnt/etc/nixos/hardware-configuration.nix
+	echo "  }];" >> /mnt/etc/nixos/hardware-configuration.nix
+	echo "}" >> /mnt/etc/nixos/hardware-configuration.nix
+fi
+
 
 echo -e "\n\n\nYou may want to adjust the configuration in /mnt/etc/nixos - if you know what"
 read -p "you're doing. When you are ready, press ENTER to install from the configuration"
