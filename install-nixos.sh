@@ -90,7 +90,7 @@ echo -e "\nDo you want full-disk encryption? On the downside, it requires you to
 echo "separate password every time you turn on your computer in order to decrypt it"
 echo "but in exchange for the hassle it can keep you safe from attackers."
 read -p "Would you like full-disk encryption? (y/n) " -n 1 ENABLE_ENCRYPTION
-if [[ "$ENABLE_ENCRYPTION" == "y" || "$ENABLE_ENCRYPTION" == "Y" || "$ENABLE_ENCRYPTION" == "yes" ]]; then
+if [[ "$ENABLE_ENCRYPTION" == "y" || "$ENABLE_ENCRYPTION" == "Y" ]]; then
 	export ENABLE_ENCRYPTION="y" # Custom scripts can just read this and check if it's set to "y"
 	echo -e "\nGreat! I'll let you type in a password - it won't show up on the screen."
 	while true; do
@@ -236,6 +236,17 @@ while true; do
 		CLONED_FROM_DOTFILES=true
 		echo -e "\n\nDone cloning"
 		cd /mnt/etc/nixos
+		if [[ -f /mnt/etc/nixos/setup.sh ]] || [[ -f /mnt/etc/nixos/setup ]]; then
+			echo "Running your setup script..."
+			export RUNNING_FROM_NIXOS_INSTALLER=true
+			if [[ -f /mnt/etc/nixos/setup.sh ]]; then
+				/mnt/etc/nixos/setup.sh
+			else
+				/mnt/etc/nixos/setup
+			fi
+		fi
+		echo
+		echo
 		break
 	else
 		break
@@ -243,14 +254,14 @@ while true; do
 done
 
 if [[ "$ENABLE_ENCRYPTION" == "y" ]]; then
-	sed -i 's~\}\s*$~g~' /mnt/etc/nixos/hardware-configuration.nix
+	sed -i '/^}\s*$/,$d' /mnt/etc/nixos/configuration.nix
 	ENCRYPTED_UUID=$(lsblk --output=UUID --noheadings /dev/disk/by-label/nixos)
-	echo "  boot.initrd.luks.devices = [{" >> /mnt/etc/nixos/hardware-configuration.nix
-	echo "    name = \"nixos\";" >> /mnt/etc/nixos/hardware-configuration.nix
-	echo "    device = \"/dev/disk/by-uuid/$ENCRYPTED_UUID\";" >> /mnt/etc/nixos/hardware-configuration.nix
-	echo "    preLVM = true;" >> /mnt/etc/nixos/hardware-configuration.nix
-	echo "  }];" >> /mnt/etc/nixos/hardware-configuration.nix
-	echo "}" >> /mnt/etc/nixos/hardware-configuration.nix
+	echo "  boot.initrd.luks.devices = [{" >> /mnt/etc/nixos/configuration.nix
+	echo "    name = \"nixos\";" >> /mnt/etc/nixos/configuration.nix
+	echo "    device = \"/dev/disk/by-uuid/$ENCRYPTED_UUID\";" >> /mnt/etc/nixos/configuration.nix
+	echo "    preLVM = true;" >> /mnt/etc/nixos/configuration.nix
+	echo "  }];" >> /mnt/etc/nixos/configuration.nix
+	echo "}" >> /mnt/etc/nixos/configuration.nix
 fi
 
 
@@ -258,17 +269,7 @@ echo -e "\n\n\nYou may want to adjust the configuration in /mnt/etc/nixos - if y
 read -p "you're doing. When you are ready, press ENTER to install from the configuration"
 
 if nixos-install; then
-	if [[ -f /mnt/etc/nixos/setup.sh ]] || [[ -f /mnt/etc/nixos/setup ]]; then
-		echo "Running your setup script..."
-		export RUNNING_FROM_NIXOS_INSTALLER=true
-		if [[ -f /mnt/etc/nixos/setup.sh ]]; then
-			/mnt/etc/nixos/setup.sh
-		else
-			/mnt/etc/nixos/setup
-		fi
-	fi
-	echo
-	echo
+	echo -e "\n\n"
 	read -p "Remove the installation media (USB, CD, etc) and then hit ENTER to reboot"
 	reboot
 else

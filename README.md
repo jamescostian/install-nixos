@@ -8,9 +8,10 @@ The goal of this script is to make installing NixOS easier, quicker, and less er
 
 - Let's you choose which device to install to and [swap size](https://web.mit.edu/rhel-doc/5/RHEL-5-manual/Deployment_Guide-en-US/ch-swapspace.html) easily
 - Runs all the steps the NixOS manual asks you to run to install NixOS
+- Allows you to add a password for [full-disk encryption](https://www.techopedia.com/definition/13623/full-disk-encryption-fde) (or use no encryption)
 - Allows you to choose how much [swap space](https://web.mit.edu/rhel-doc/5/RHEL-5-manual/Deployment_Guide-en-US/ch-swapspace.html) you want
 - Type a git URL and clone it to `/etc/nixos` - this is useful if you already have a NixOS configuration, like [mine](https://github.com/jamescostian/.config)
-  - If the repo contains a `setup.sh` or `setup` file, you can optionally run it just before rebooting. An environment variable (`RUNNING_FROM_NIXOS_INSTALLER`) will be set while your setup script is run, and at the time it's run, it will be in `/mnt/etc/nixos` - any path you'd normally use will be prepended by `/mnt`, e.g. instead of using `/home/james` you should use `/mnt/home/james` when this script gets run.
+  - If the repo contains a `setup.sh` or `setup` file, you can optionally run it just before `nixos-install` is actually run. An environment variable (`RUNNING_FROM_NIXOS_INSTALLER`) will be set while your setup script is run, and at the time it's run, it will be in `/mnt/etc/nixos` - any path you'd normally use will be prepended by `/mnt`, e.g. instead of using `/home/user` you should use `/mnt/home/user` when this script gets run.
 
 The following are **NOT SUPPORTED** - you can send me a pull request if you'd like support for them:
 
