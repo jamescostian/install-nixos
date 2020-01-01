@@ -92,6 +92,7 @@ echo "but in exchange for the hassle it can keep you safe from attackers."
 read -p "Would you like full-disk encryption? (y/n) " -n 1 ENABLE_ENCRYPTION
 if [[ "$ENABLE_ENCRYPTION" == "y" || "$ENABLE_ENCRYPTION" == "Y" ]]; then
 	export ENABLE_ENCRYPTION="y" # Custom scripts can just read this and check if it's set to "y"
+	export ENCRYPTED_PARTITION="$PARTITION"1
 	echo -e "\nGreat! I'll let you type in a password - it won't show up on the screen."
 	while true; do
 		read -sp "Enter the password you want to type when turning on your machine: " ENCRYPTION_PASSWORD
@@ -153,8 +154,8 @@ parted $DEVICE -- set $BOOT_PARTITION_NUM boot on > /dev/null 2> /dev/null
 #                                                     |___/                           
 if [[ ! -z "$ENCRYPTION_PASSWORD" ]]; then
 	# First, make the luks container
-	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksFormat "$PARTITION"1 - 2> /dev/null
-	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksOpen "$PARTITION"1 nixos-luks - 2> /dev/null
+	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksFormat "$ENCRYPTED_PARTITION" - 2> /dev/null
+	echo -n $ENCRYPTION_PASSWORD | cryptsetup luksOpen "$ENCRYPTED_PARTITION" nixos-luks - 2> /dev/null
 	# Next, setup LVM within it
 	pvcreate /dev/mapper/nixos-luks 2> /dev/null
 	vgcreate nixos-lvm /dev/mapper/nixos-luks 2> /dev/null
@@ -216,8 +217,8 @@ while true; do
 			GIT_URL="$(echo $GIT_URL | sed 's~^gl:~https://gitlab.com/~')"'.git'
 		fi
 		cd /mnt/etc/nixos
-		echo "Loading..."
-		nix-env -i "$(nix-env -qa git | head -1)"
+		echo "Installing git via nix-env... (takes 2-3 minutes, not sure why)"
+		nix-env -i git
 		git clone $GIT_URL cloned_dotfiles
 		if [[ "$?" != "0" ]]; then
 			echo "ERROR CLONING! Did you get the right URL?" echo "Did you have the right authentication?"
@@ -237,6 +238,9 @@ while true; do
 		echo -e "\n\nDone cloning"
 		cd /mnt/etc/nixos
 		if [[ -f /mnt/etc/nixos/setup.sh ]] || [[ -f /mnt/etc/nixos/setup ]]; then
+			# Don't let the setup script have access to the encryption password
+			unset ENCRYPTION_PASSWORD_CONFIRMATION
+			unset ENCRYPTION_PASSWORD
 			echo "Running your setup script..."
 			export RUNNING_FROM_NIXOS_INSTALLER=true
 			if [[ -f /mnt/etc/nixos/setup.sh ]]; then
@@ -255,10 +259,9 @@ done
 
 if [[ "$ENABLE_ENCRYPTION" == "y" ]]; then
 	sed -i '/^}\s*$/,$d' /mnt/etc/nixos/configuration.nix
-	ENCRYPTED_UUID=$(lsblk --output=UUID --noheadings /dev/disk/by-label/nixos)
 	echo "  boot.initrd.luks.devices = [{" >> /mnt/etc/nixos/configuration.nix
 	echo "    name = \"nixos\";" >> /mnt/etc/nixos/configuration.nix
-	echo "    device = \"/dev/disk/by-uuid/$ENCRYPTED_UUID\";" >> /mnt/etc/nixos/configuration.nix
+	echo "    device = \"$ENCRYPTED_PARTITION\";" >> /mnt/etc/nixos/configuration.nix
 	echo "    preLVM = true;" >> /mnt/etc/nixos/configuration.nix
 	echo "  }];" >> /mnt/etc/nixos/configuration.nix
 	echo "}" >> /mnt/etc/nixos/configuration.nix
